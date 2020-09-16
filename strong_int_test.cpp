@@ -1,5 +1,6 @@
 #include <boost/static_string.hpp>
 #include <fmt/format.h>
+#include <fmt/ostream.h>
 #include <fmt/printf.h>
 
 #include "strong_integer.h"
@@ -24,11 +25,16 @@ template <> struct fmt::formatter<Int1> : fmt::formatter<std::string_view> {
     }
 };
 
-auto main() -> int {
-    Int1 a = 0;
-    Int1 b = 1;
-    auto c = a + b;
+auto operator<<(std::ostream &os, Int1 i) -> std::ostream & { return os << i.get(); }
 
-    fmt::print(FMT_STRING("{}\n"), a << c.get());
-    fmt::printf("%lu\n", a << c.get());
+auto main() -> int {
+    Int1 a = 8074984;
+    Int1 b = 37409574;
+    auto c = a + b + 1;
+    c += 3;
+
+    static_assert(std::is_same_v<decltype(a), decltype(c)>);
+
+    fmt::print(FMT_STRING("{}\n"), a << 1);
+    fmt::printf("%lu\n", a << 1);
 }
