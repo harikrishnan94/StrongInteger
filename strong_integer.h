@@ -7,37 +7,67 @@
 #include <boost/container_hash/hash.hpp>
 #include <boost/preprocessor/cat.hpp>
 
-#define PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(op)                                          \
-    friend constexpr auto operator op(Strong a, Strong b) noexcept->Strong {                       \
-        return Strong(a.get() op b.get());                                                         \
-    }
+// NOLINTNEXTLINE
+#define ResType(Int1, Int2, Tag, op) Strong<decltype(Int1(0) op Int2(0)), Tag>
 
-#define PGSLAVE_STRONG_INTEGER_DEFINE_SHIFT_OPERATOR(op)                                           \
-    friend constexpr auto operator op(Strong a, Strong b) noexcept->Strong {                       \
-        return Strong(a.get() op b.get());                                                         \
+#define PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(op)                                          \
+    template <typename Int1, typename Int2, typename Tag1, typename Tag2,                          \
+              typename Tag = std::enable_if_t<std::is_same_v<Tag1, Tag2>, Tag1>>                   \
+    constexpr auto operator op(Strong<Int1, Tag> a,                                                \
+                               Strong<Int2, Tag> b) noexcept->ResType(Int1, Int2, Tag1, op) {      \
+        return {a.get() op b.get()};                                                               \
+    }                                                                                              \
+                                                                                                   \
+    template <typename Int1, typename Int2, typename Tag1, typename Tag2,                          \
+              typename Tag = std::enable_if_t<!std::is_same_v<Tag1, Tag2>>>                        \
+    constexpr auto operator op(Strong<Int1, Tag1> a, Strong<Int2, Tag2> b) = delete;               \
+                                                                                                   \
+    template <typename Int1, typename Int2, typename Tag>                                          \
+    constexpr auto operator op(Strong<Int1, Tag> a, Int2 b) noexcept->ResType(Int1, Int2, Tag,     \
+                                                                              op) {                \
+        return {a.get() op b};                                                                     \
+    }                                                                                              \
+                                                                                                   \
+    template <typename Int1, typename Int2, typename Tag>                                          \
+    constexpr auto operator op(Int1 a, Strong<Int2, Tag> b) noexcept->ResType(Int1, Int2, Tag,     \
+                                                                              op) {                \
+        return {a op b.get()};                                                                     \
     }
 
 #define PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(op)                               \
-    friend constexpr auto operator op(Strong a, Strong b) noexcept->bool {                         \
+    template <typename Int1, typename Int2, typename Tag1, typename Tag2,                          \
+              typename Tag = std::enable_if_t<std::is_same_v<Tag1, Tag2>, Tag1>>                   \
+    constexpr auto operator op(Strong<Int1, Tag> a, Strong<Int1, Tag> b) noexcept->bool {          \
         return {a.get() op b.get()};                                                               \
+    }                                                                                              \
+                                                                                                   \
+    template <typename Int1, typename Int2, typename Tag1, typename Tag2,                          \
+              typename Tag = std::enable_if_t<!std::is_same_v<Tag1, Tag2>>>                        \
+    constexpr auto operator op(Strong<Int1, Tag1> a, Strong<Int2, Tag2> b) = delete;               \
+                                                                                                   \
+    template <typename Int1, typename Int2, typename Tag>                                          \
+    constexpr auto operator op(Strong<Int1, Tag> a, Int2 b) noexcept->bool {                       \
+        return {a.get() op b};                                                                     \
+    }                                                                                              \
+                                                                                                   \
+    template <typename Int1, typename Int2, typename Tag>                                          \
+    constexpr auto operator op(Int1 a, Strong<Int2, Tag> b) noexcept->bool {                       \
+        return {a op b.get()};                                                                     \
     }
 
 #define PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(op)                             \
-    constexpr auto operator BOOST_PP_CAT(op, =)(Strong i) noexcept->Strong & {                     \
+    template <typename Int2, typename Tag2,                                                        \
+              typename = std::enable_if_t<std::is_same_v<Tag, Tag2>>>                              \
+    constexpr auto operator BOOST_PP_CAT(op, =)(Strong<Int2, Tag> i) noexcept->Strong & {          \
         *this = Strong(get() op i.get());                                                          \
         return *this;                                                                              \
     }                                                                                              \
+                                                                                                   \
+    template <typename Int2, typename Tag2,                                                        \
+              typename = std::enable_if_t<!std::is_same_v<Tag, Tag2>>>                             \
+    constexpr auto operator BOOST_PP_CAT(op, =)(Strong<Int2, Tag> i) = delete;                     \
+                                                                                                   \
     constexpr auto operator BOOST_PP_CAT(op, =)(Int i) noexcept->Strong & {                        \
-        *this = Strong(get() op i);                                                                \
-        return *this;                                                                              \
-    }
-
-#define PGSLAVE_STRONG_INTEGER_DEFINE_SHIFT_ASSIGNMENT_OPERATOR(op)                                \
-    constexpr auto operator BOOST_PP_CAT(op, =)(Strong i) noexcept->Strong & {                     \
-        *this = Strong(get() op i.get());                                                          \
-        return *this;                                                                              \
-    }                                                                                              \
-    constexpr auto operator BOOST_PP_CAT(op, =)(int i) noexcept->Strong & {                        \
         *this = Strong(get() op i);                                                                \
         return *this;                                                                              \
     }
@@ -59,9 +89,19 @@ template <typename IntT, typename TagT> class Strong : public StrongBase {
     static inline constexpr bool IsStrong = true;
 
     constexpr Strong() noexcept = default;
+
+    template <typename OtherInt, typename OtherTag,
+              std::enable_if_t<!std::is_same_v<Int, OtherInt>>>
+    Strong(Strong<OtherInt, OtherTag> val) = delete;
+
     /* explicit */ constexpr Strong(Int val) noexcept : m_val(val) {} // NOLINT
 
     /* explicit */ constexpr operator Int() const noexcept { return m_val; } // NOLINT
+
+    template <typename OtherInt, typename OtherTag,
+              typename = std::enable_if_t<!std::is_same_v<Tag, OtherTag> ||
+                                          !std::is_same_v<Int, OtherInt>>>
+    operator Strong<OtherInt, OtherTag>() = delete;
 
     [[nodiscard]] constexpr auto get() const noexcept { return m_val; }
 
@@ -87,33 +127,14 @@ template <typename IntT, typename TagT> class Strong : public StrongBase {
     constexpr auto operator~() const noexcept { return Strong(~m_val); }
     constexpr auto operator!() const noexcept { return !m_val; }
 
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(==);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(!=);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(<);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(>);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(>=);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(<=);
-
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(+);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(-);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(*);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(/);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(%);
-
-    PGSLAVE_STRONG_INTEGER_DEFINE_SHIFT_OPERATOR(<<);
-    PGSLAVE_STRONG_INTEGER_DEFINE_SHIFT_OPERATOR(>>);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(|);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(&);
-    PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(^);
-
     PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(+);
     PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(-);
     PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(*);
     PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(/);
     PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(%);
 
-    PGSLAVE_STRONG_INTEGER_DEFINE_SHIFT_ASSIGNMENT_OPERATOR(<<);
-    PGSLAVE_STRONG_INTEGER_DEFINE_SHIFT_ASSIGNMENT_OPERATOR(>>);
+    PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(<<);
+    PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(>>);
     PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(|);
     PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(&);
     PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR(^);
@@ -121,6 +142,25 @@ template <typename IntT, typename TagT> class Strong : public StrongBase {
   private:
     Int m_val = 0;
 };
+
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(+);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(-);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(*);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(/);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(%);
+
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(|);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(&);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(^);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(<<);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR(>>);
+
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(==);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(!=);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(<);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(>);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(>=);
+PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR(<=);
 
 // Test for trivial copy and standard layout
 static_assert(std::is_trivially_copyable_v<Strong<int, struct StrongLayoutTestTag>> &&
@@ -199,3 +239,8 @@ template <typename Int, typename Tag> struct hash<pgslave::util::Strong<Int, Tag
     }
 };
 } // namespace std
+
+#undef ResType
+#undef PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_OPERATOR
+#undef PGSLAVE_STRONG_INTEGER_DEFINE_BINARY_COMPARISON_OPERATOR
+#undef PGSLAVE_STRONG_INTEGER_DEFINE_COMPOUND_ASSIGNMENT_OPERATOR

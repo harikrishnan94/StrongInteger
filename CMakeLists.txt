@@ -24,9 +24,11 @@ include(SanitizerFlags)
 include(WarningFlags)
 
 find_package(Boost 1.72 COMPONENTS SYSTEM)
+find_package(fmt CONFIG REQUIRED)
 
 add_executable(StrongIntTest strong_int_test.cpp)
 target_include_directories(StrongIntTest PRIVATE ${Boost_INCLUDE_DIRS})
+target_link_libraries(StrongIntTest PRIVATE fmt::fmt)
 
 add_sanitizer_flags(StrongIntTest)
 add_warning_flags(StrongIntTest)
